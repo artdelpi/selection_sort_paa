@@ -23,9 +23,7 @@ Definition le_all x l := forall y, In y l -> x <= y.
 
 (** A correção da função [select_min] é estabelecida provando-se que, se [select_min l] retorna um natural [m] então [m] é menor ou igual do que todos os elementos de [l]. *)
 
-Lemma select_min_correct : forall l m, select_min l = Some m -> le_all m l.
-Proof.
-  (* O mínimo devolvido é um piso da lista (lema pedido no enunciado). *)
+(* O mínimo devolvido é um piso da lista (lema pedido no enunciado). *)
 Lemma select_min_correct : forall l m, select_min l = Some m -> le_all m l.
 Proof.
   intro l. functional induction (select_min l); intros m H.
