@@ -1,30 +1,527 @@
-\documentclass{article}
+\documentclass[11pt,a4paper]{article}
 
 \usepackage[utf8]{inputenc}
-\usepackage[portuguese]{babel}
 \usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{mathpartir}
 \usepackage{lmodern}
 \usepackage{fullpage}
-\usepackage[usenames]{color}
-\usepackage[color]{coqdoc}
-\usepackage{url}
-\usepackage{makeidx,hyperref}
-\usepackage[all]{xy}
+\usepackage{hyperref}
 
-\usepackage{mathpartir}
-\usepackage{tcolorbox}
-\usepackage{amsmath,amssymb}
+% ----- ambientes no estilo das anotacoes -----
+\newtheorem*{afirmacao}{Afirma\c{c}\~ao}
+\newenvironment{demo}{\noindent\textit{Demonstra\c{c}\~ao.}\ }{\hfill$\square$\par\medskip}
 
-\newcommand{\tto}{\twoheadrightarrow}
-\newcommand{\ott}{\twoheadleftarrow}
+% ----- atalhos de notacao -----
+\newcommand{\nil}{\mathsf{nil}}
+\newcommand{\cons}{::}
+\newcommand{\ssort}{\mathsf{ss}}
+\newcommand{\selmin}{\mathsf{select\_min}}
+\newcommand{\removeone}{\mathsf{remove\_one}}
+\newcommand{\Sorted}{\mathsf{Sorted}}
+\newcommand{\Perm}{\mathsf{Permutation}}
+\newcommand{\leall}{\mathsf{le\_all}}
+\newcommand{\HdRel}{\mathsf{HdRel}}
+\newcommand{\lerel}{\mathsf{le}}
+\newcommand{\listlen}{\mathsf{length}}
 
-\title{Formalização da correção do algoritmo Bubblesort}
-\author{Nome e matrícula}
+% rotulos de regra menores (evitam aperto nas arvores)
+\renewcommand{\TirNameStyle}[1]{\small{#1}}
+
+% folga de ultima linha: evita que trechos longos de matematica em linha estourem a margem
+\setlength{\emergencystretch}{6em}
+
+\title{Formaliza\c{c}\~ao da corre\c{c}\~ao do algoritmo \emph{Selection Sort}\\
+\large Projeto de L\'ogica Computacional 1: Projeto e An\'alise de Algoritmos}
+\author{Arthur Delpino Barbabella \\ Matr\'icula 221002094}
 \date{\today}
 
 \begin{document}
 \maketitle
 
-\input{bubble_sort.v}
+\section{Introdu\c{c}\~ao}
+
+Este trabalho apresenta a prova formal, no assistente Rocq, da corre\c{c}\~ao do
+algoritmo \emph{selection sort} (fun\c{c}\~ao $\ssort$). Dizer que o algoritmo est\'a
+correto significa que, para toda lista $l$, a sa\'ida $\ssort\ l$ \'e uma
+\emph{permuta\c{c}\~ao ordenada} de $l$. Formalmente, a corre\c{c}\~ao \'e o
+teorema
+\[
+  \texttt{selectionsort\_correct}:\quad
+  \forall l,\ \Sorted\ \lerel\ (\ssort\ l)\ \land\ \Perm\ l\ (\ssort\ l),
+\]
+em que $\Sorted\ \lerel\ (\ssort\ l)$ exprime que a sa\'ida est\'a ordenada de forma
+n\~ao decrescente e $\Perm\ l\ (\ssort\ l)$ exprime que a sa\'ida cont\'em
+exatamente os mesmos elementos da entrada. As duas conjun\c{c}\~oes s\~ao
+necess\'arias: a ordena\c{c}\~ao isolada admitiria devolver a lista vazia, e a
+permuta\c{c}\~ao isolada admitiria devolver a entrada sem ordenar.
+
+A demonstra\c{c}\~ao de \texttt{selectionsort\_correct} reduz-se, por
+introdu\c{c}\~ao da conjun\c{c}\~ao, a dois ramos, tratados simultaneamente pela
+indu\c{c}\~ao (funcional) sobre $\ssort$: a ordena\c{c}\~ao da sa\'ida e a sua
+rela\c{c}\~ao de permuta\c{c}\~ao com a entrada. Cada ramo apoia-se numa cadeia de
+lemas auxiliares. O ramo da ordena\c{c}\~ao depende de $\selmin$ devolver um
+\emph{piso} da lista (lema \texttt{select\_min\_correct}), combinado com a ponte
+\texttt{le\_all\_cons\_sorted}. O ramo da permuta\c{c}\~ao depende do comportamento
+da remo\c{c}\~ao do m\'inimo (lema \texttt{remove\_one\_perm}). Ambos os ramos,
+junto com a boa defini\c{c}\~ao (termina\c{c}\~ao) de $\ssort$, dependem ainda do
+fato de o m\'inimo pertencer \`a lista (lema \texttt{select\_min\_in}).
+
+Cabe registrar a principal contribui\c{c}\~ao do trabalho, situada no algoritmo
+$\ssort$ do enunciado. Como se detalha na Se\c{c}\~ao~\ref{sec:correcao}, aquele
+algoritmo est\'a \emph{incorreto}: ele extrai o m\'inimo da lista inteira mas
+recursa sobre a \emph{cauda}, removendo a cabe\c{c}a em vez do m\'inimo, de modo
+que a segunda conjun\c{c}\~ao do teorema (a permuta\c{c}\~ao) torna-se falsa. Foi
+necess\'ario, portanto, identificar o erro e redefinir $\ssort$ para recursar
+sobre a remo\c{c}\~ao do m\'inimo. A seguir, na ordem em que a prova foi
+constru\'ida, descreve-se cada lema e a sua \'arvore de dedu\c{c}\~ao,
+indicando o trecho correspondente em Rocq.
+
+\section{Corre\c{c}\~ao do algoritmo}
+\label{sec:correcao}
+
+O algoritmo $\ssort$ fornecido no enunciado \'e
+\[
+  \ssort\ l =
+  \begin{cases}
+    \nil & \text{se } l = \nil,\\
+    m \cons \ssort\ tl & \text{se } l = h\cons tl \text{ e } \selmin\ l = \mathsf{Some}\ m,
+  \end{cases}
+\]
+ou seja, ele extrai o m\'inimo $m$ da lista \emph{inteira}, mas faz a chamada
+recursiva sobre a cauda $tl$, removendo assim a \emph{cabe\c{c}a} $h$ em vez do
+m\'inimo $m$. Quando $m \neq h$, o elemento $h$ \'e descartado e o elemento $m$ \'e
+duplicado, de modo que a sa\'ida deixa de ser uma permuta\c{c}\~ao da entrada.
+
+\begin{afirmacao}
+O algoritmo original viola a conjun\c{c}\~ao de permuta\c{c}\~ao.
+\end{afirmacao}
+\begin{demo}
+Tome $l = 2\cons 1\cons\nil$. Tem-se $\selmin\ (2\cons 1\cons\nil) = \mathsf{Some}\ 1$,
+mas a chamada recursiva \'e $\ssort\ (1\cons\nil)$, e portanto
+$\ssort\ (2\cons 1\cons\nil) = 1\cons 1\cons\nil$. A lista $1\cons 1\cons\nil$ n\~ao
+\'e permuta\c{c}\~ao de $2\cons 1\cons\nil$ (o $2$ desaparece e o $1$ aparece duas
+vezes). Logo $\Perm\ l\ (\ssort\ l)$ \'e falsa e o teorema n\~ao poderia ser
+provado.
+\end{demo}
+
+A corre\c{c}\~ao consiste em recursar sobre a remo\c{c}\~ao do m\'inimo, e n\~ao
+sobre a cauda. Para isso, define-se a fun\c{c}\~ao auxiliar $\removeone\ x\ l$,
+que remove a primeira ocorr\^encia de $x$ em $l$, e redefine-se
+\[
+  \ssort\ l =
+  \begin{cases}
+    \nil & \text{se } l = \nil,\\
+    \nil & \text{se } \selmin\ l = \mathsf{None},\\
+    m \cons \ssort\ (\removeone\ m\ l) & \text{se } \selmin\ l = \mathsf{Some}\ m.
+  \end{cases}
+\]
+Como o argumento da chamada recursiva, $\removeone\ m\ l$, n\~ao \'e uma
+sublista estrutural de $l$, a fun\c{c}\~ao deixa de ser estruturalmente recursiva
+e \'e definida por uma medida decrescente, o comprimento $\listlen\ l$. Isso gera
+a obriga\c{c}\~ao de termina\c{c}\~ao $\listlen\ (\removeone\ m\ l) < \listlen\ l$,
+cuja \'arvore combina o fato de o m\'inimo pertencer \`a lista com o fato de a
+remo\c{c}\~ao de um elemento presente diminuir o comprimento:
+\begin{mathpar}
+\inferrule*[Right={(termina\c{c}\~ao)}]
+  {
+    \inferrule*[Right={$(\texttt{select\_min\_in})$}]{\selmin\ l = \mathsf{Some}\ m}{m \in l}
+    \and\and
+    \inferrule*[Right={$(\texttt{remove\_one\_len})$}]{m \in l}{\listlen\ (\removeone\ m\ l) < \listlen\ l}
+  }
+  {\listlen\ (\removeone\ m\ l) < \listlen\ l}
+\end{mathpar}
+A fun\c{c}\~ao $\selmin$ do enunciado n\~ao foi alterada: o erro situava-se
+exclusivamente na forma como $\ssort$ a utilizava.
+
+\section{O lema \texttt{select\_min\_correct}}
+
+O enunciado pede a prova de que o valor devolvido por $\selmin$ \'e um piso da
+lista, onde $\leall\ m\ l$ abrevia ``$m$ \'e menor ou igual a todo elemento de $l$'':
+\[
+  \texttt{select\_min\_correct}:\quad \forall l\ m,\ \selmin\ l = \mathsf{Some}\ m \to \leall\ m\ l.
+\]
+A prova \'e por indu\c{c}\~ao funcional sobre $\selmin$, o que gera quatro casos,
+um por ramo da defini\c{c}\~ao, que o pr\'oprio assistente lista como \emph{goals}.
+
+\subsection{Casos base}
+
+H\'a dois casos base. No primeiro, $l = \nil$: nesse ramo $\selmin\ \nil = \mathsf{None}$.
+Mas a hip\'otese do lema sup\~oe $\selmin\ l = \mathsf{Some}\ m$, o que aqui significa
+$\mathsf{None} = \mathsf{Some}\ m$, uma igualdade imposs\'ivel (um construtor nunca
+\'e igual ao outro). Ou seja, a hip\'otese nunca se realiza quando $l = \nil$, de
+modo que n\~ao h\'a nada a provar sobre $m$: a implica\c{c}\~ao vale por ter
+premissa falsa (em Rocq, \texttt{discriminate}).
+
+No segundo, $l = h\cons\nil$: agora $\selmin\ l = \mathsf{Some}\ h$, e a
+hip\'otese $\selmin\ l = \mathsf{Some}\ m$ torna-se $\mathsf{Some}\ h = \mathsf{Some}\ m$,
+donde $m = h$. Resta mostrar $\leall\ m\ (h\cons\nil)$, isto \'e, que $m$ \'e menor
+ou igual a todo elemento de $h\cons\nil$. Como essa lista tem um \'unico elemento,
+o pr\'oprio $h$, o objetivo reduz-se a $m \le h$; e sendo $m = h$, isso \'e
+$h \le h$, verdadeiro por reflexividade.
+
+\subsection{Casos recursivos}
+
+Nos dois ramos recursivos, a hip\'otese de indu\c{c}\~ao (H.I.) fornece que $m$
+\'e piso da sublista usada na recurs\~ao, e a compara\c{c}\~ao do ramo estende
+esse piso ao elemento descartado por transitividade.
+
+\begin{afirmacao}[Ramo $h_1 \le h_2$]
+Se $\leall\ m\ (h_1\cons tl)$ (H.I.) e $h_1 \le h_2$, ent\~ao
+$\leall\ m\ (h_1\cons h_2\cons tl)$.
+\end{afirmacao}
+\begin{demo}
+Seja $z \in (h_1\cons h_2\cons tl)$. H\'a tr\^es casos:
+\begin{itemize}
+  \item $z = h_1$: como $h_1 \in (h_1\cons tl)$, a H.I.\ d\'a $m \le h_1$.
+  \item $z = h_2$: pela H.I.\ (com $h_1 \in h_1\cons tl$) tem-se $m \le h_1$; com a
+        hip\'otese do ramo $h_1 \le h_2$, a transitividade fornece $m \le h_2$.
+  \item $z \in tl$: ent\~ao $z \in (h_1\cons tl)$, e a H.I.\ d\'a $m \le z$.
+\end{itemize}
+Em todos os casos $m \le z$; logo $\leall\ m\ (h_1\cons h_2\cons tl)$. O subcaso
+$z = h_2$, que \'e o \'unico n\~ao imediato, corresponde \`a \'arvore
+\begin{mathpar}
+\inferrule*[Right={(transitividade)}]
+  {
+    \inferrule*[Right={(H.I.)}]{h_1 \in (h_1\cons tl)}{m \le h_1}
+    \and\and
+    h_1 \le h_2
+  }
+  {m \le h_2}
+\end{mathpar}
+\end{demo}
+
+O ramo $h_1 > h_2$ \'e sim\'etrico: a recurs\~ao ocorre sobre $h_2\cons tl$, a
+H.I.\ d\'a $\leall\ m\ (h_2\cons tl)$, e o \'unico subcaso n\~ao imediato \'e
+$z = h_1$, no qual $m \le h_2$ (pela H.I.) e $h_2 < h_1$ (hip\'otese do ramo) d\~ao
+$m \le h_1$ por transitividade. O n\'ucleo da prova em Rocq \'e:
+\begin{verbatim}
+apply Nat.leb_le in e0.
+assert (Hpiso : le_all m (h1::tl)) by (apply IHo; exact H).
+intros z Hz. simpl in Hz. destruct Hz as [Hz | [Hz | Hz]].
++ subst. apply Hpiso. simpl. left. reflexivity.
++ subst. assert (m <= h1) by (apply Hpiso; simpl; left; reflexivity). lia.
++ apply Hpiso. simpl. right. exact Hz.
+\end{verbatim}
+(o \texttt{lia} fecha a transitividade $m \le h_1 \le h_2 \Rightarrow m \le h_2$).
+
+\section{Os lemas \texttt{select\_min\_in} e \texttt{select\_min\_None\_nil}}
+
+Provam-se ainda dois fatos auxiliares sobre $\selmin$, tamb\'em por indu\c{c}\~ao
+funcional:
+\[
+  \texttt{select\_min\_in}:\ \selmin\ l = \mathsf{Some}\ m \to m \in l,
+\]
+\[
+  \texttt{select\_min\_None\_nil}:\ \selmin\ l = \mathsf{None} \to l = \nil.
+\]
+O primeiro \'e usado tanto na termina\c{c}\~ao de $\ssort$ quanto no teorema
+final; o segundo descarta, no teorema, o ramo em que $\selmin$ devolveria
+$\mathsf{None}$ sobre uma lista n\~ao vazia.
+
+\begin{afirmacao}
+$\selmin\ l = \mathsf{Some}\ m \Rightarrow m \in l$.
+\end{afirmacao}
+\begin{demo}
+Por indu\c{c}\~ao funcional. Os casos $l = \nil$ (hip\'otese contradit\'oria) e
+$l = h\cons\nil$ (com $m = h$, imediatamente $m \in h\cons\nil$) s\~ao diretos.
+No ramo $h_1 \le h_2$, a H.I.\ d\'a $m \in (h_1\cons tl)$, ou seja, $m = h_1$ ou
+$m \in tl$; em ambos os casos $m \in (h_1\cons h_2\cons tl)$ (se $m = h_1$, \'e a
+cabe\c{c}a; se $m \in tl$, est\'a na cauda). O ramo $h_1 > h_2$ \'e an\'alogo, com
+a H.I.\ dando $m \in (h_2\cons tl)$.
+\end{demo}
+
+\begin{afirmacao}
+$\selmin\ l = \mathsf{None} \Rightarrow l = \nil$.
+\end{afirmacao}
+\begin{demo}
+Por indu\c{c}\~ao funcional. Apenas o ramo $l = \nil$ devolve $\mathsf{None}$, e
+nele a conclus\~ao \'e imediata. O ramo $l = h\cons\nil$ devolve
+$\mathsf{Some}\ h$, contradizendo a hip\'otese. Nos ramos recursivos, a H.I.\
+aplicada \`a hip\'otese $\selmin\ (\cdot) = \mathsf{None}$ afirmaria que a sublista
+$h_i\cons tl$ \'e vazia, o que \'e imposs\'ivel; logo esses ramos tamb\'em s\~ao
+descartados por contradi\c{c}\~ao.
+\end{demo}
+
+\section{A remo\c{c}\~ao do m\'inimo}
+
+A fun\c{c}\~ao $\removeone\ x\ l$ remove a primeira ocorr\^encia de $x$ em $l$:
+\[
+  \removeone\ x\ l =
+  \begin{cases}
+    \nil & \text{se } l = \nil,\\
+    tl & \text{se } l = h\cons tl \text{ e } x = h,\\
+    h \cons \removeone\ x\ tl & \text{se } l = h\cons tl \text{ e } x \neq h.
+  \end{cases}
+\]
+Provam-se tr\^es fatos por indu\c{c}\~ao em $l$:
+\[
+  \texttt{remove\_one\_in\_orig}:\ z \in \removeone\ m\ l \to z \in l,
+\]
+\[
+  \texttt{remove\_one\_len}:\ m \in l \to \listlen\ (\removeone\ m\ l) < \listlen\ l,
+\]
+\[
+  \texttt{remove\_one\_perm}:\ m \in l \to \Perm\ l\ (m \cons \removeone\ m\ l).
+\]
+O primeiro garante que a remo\c{c}\~ao n\~ao introduz elementos novos; o segundo
+\'e a base da termina\c{c}\~ao de $\ssort$; o terceiro \'e o cerne do ramo da
+permuta\c{c}\~ao.
+
+\begin{afirmacao}[\texttt{remove\_one\_in\_orig}]
+Todo elemento de $\removeone\ m\ l$ j\'a estava em $l$.
+\end{afirmacao}
+\begin{demo}
+Indu\c{c}\~ao em $l$. Se $l = \nil$, $\removeone\ m\ l = \nil$ e n\~ao h\'a
+elemento. Se $l = h\cons tl$, h\'a dois casos. Se $m = h$, ent\~ao
+$\removeone\ m\ l = tl$, e $z \in tl \Rightarrow z \in (h\cons tl)$. Se $m \neq h$,
+ent\~ao $\removeone\ m\ l = h\cons \removeone\ m\ tl$; se $z = h$ ele est\'a em
+$l$, e se $z \in \removeone\ m\ tl$, a H.I.\ d\'a $z \in tl$, que est\'a em $l$.
+\end{demo}
+
+\begin{afirmacao}[\texttt{remove\_one\_len}]
+Se $m \in l$, ent\~ao remover $m$ diminui o comprimento.
+\end{afirmacao}
+\begin{demo}
+Indu\c{c}\~ao em $l$. O caso $l = \nil$ \'e vazio (n\~ao h\'a $m \in \nil$). Se
+$l = h\cons tl$ e $m = h$, ent\~ao $\removeone\ m\ l = tl$, cujo comprimento \'e
+$\listlen\ tl < \listlen\ (h\cons tl)$. Se $m \neq h$, ent\~ao a pertin\^encia
+$m \in (h\cons tl)$ obriga $m \in tl$; a H.I.\ d\'a
+$\listlen\ (\removeone\ m\ tl) < \listlen\ tl$, e somando a cabe\c{c}a $h$ dos dois
+lados preserva-se a desigualdade estrita.
+\end{demo}
+
+\begin{afirmacao}[\texttt{remove\_one\_perm}]
+Se $m \in l$, ent\~ao $\Perm\ l\ (m \cons \removeone\ m\ l)$.
+\end{afirmacao}
+\begin{demo}
+Indu\c{c}\~ao em $l$. Se $m$ \'e a cabe\c{c}a ($l = m\cons tl$), ent\~ao
+$m\cons\removeone\ m\ l = m\cons tl = l$ e a permuta\c{c}\~ao \'e a identidade
+($Permutation\_refl$). Se $m$ est\'a na cauda ($l = h\cons tl$ com $m \neq h$ e
+$m \in tl$), encadeia-se a H.I.\ sob $perm\_skip$ com uma troca $perm\_swap$,
+ligadas por $perm\_trans$, identificando $h\cons\removeone\ m\ tl$ com
+$\removeone\ m\ (h\cons tl)$ (defini\c{c}\~ao de $\removeone$ quando $m \neq h$):
+\begin{tiny}
+\begin{mathpar}
+\inferrule*[Right={$(perm\_trans)$}]
+  {
+    \inferrule*[Right={$(perm\_skip)$}]
+      {\mathrm{H.I.}:\ \Perm\ tl\ (m \cons \removeone\ m\ tl)}
+      {\Perm\ (h \cons tl)\ (h \cons m \cons \removeone\ m\ tl)}
+    \and\and
+    \inferrule*[Right={$(perm\_swap)$}]{~}
+      {\Perm\ (h \cons m \cons \removeone\ m\ tl)\ (m \cons h \cons \removeone\ m\ tl)}
+  }
+  {\Perm\ (h \cons tl)\ (m \cons \removeone\ m\ (h\cons tl))}
+\end{mathpar}
+\end{tiny}
+\end{demo}
+\noindent Em Rocq, o passo indutivo n\~ao trivial fica:
+\begin{verbatim}
+apply perm_trans with (l' := h :: m :: remove_one m tl).
+- apply perm_skip. apply IH. exact Hin.
+- apply perm_swap.
+\end{verbatim}
+
+\section{A ponte \texttt{le\_all\_cons\_sorted}}
+
+O elo entre ``ser piso'' e ``estar ordenada'' \'e o mesmo lema reaproveitado do
+bubble sort:
+\[
+  \texttt{le\_all\_cons\_sorted}:\quad \leall\ x\ l \to \Sorted\ \lerel\ l \to \Sorted\ \lerel\ (x\cons l).
+\]
+Ele afirma o \'obvio: $x\cons l$ s\'o est\'a ordenada se $l$ estiver ordenada
+\emph{e} $x$ for menor ou igual a todos os elementos de $l$. A quebra \'e feita
+pelo lema $Sorted\_cons$ da biblioteca, que exige duas premissas, a cauda
+ordenada e a rela\c{c}\~ao da cabe\c{c}a com o primeiro elemento:
+\begin{mathpar}
+\inferrule*[Right={$(Sorted\_cons)$}]{\Sorted\ \lerel\ l \\ \HdRel\ \lerel\ x\ l}{\Sorted\ \lerel\ (x\cons l)}
+\end{mathpar}
+A primeira premissa \'e exatamente a hip\'otese $\Sorted\ \lerel\ l$. A segunda,
+$\HdRel\ \lerel\ x\ l$, depende do formato de $l$, e por isso divide-se em dois
+casos: se $l = \nil$, vale por $HdRel\_nil$; se $l = y\cons l'$, usa-se
+$HdRel\_cons$ com $x \le y$, que sai de $\leall\ x\ l$ aplicado \`a cabe\c{c}a $y$:
+\begin{mathpar}
+\inferrule*[Right={$(HdRel\_nil)$}]{~}{\HdRel\ \lerel\ x\ \nil}
+\and\and\and
+\inferrule*[Right={$(HdRel\_cons)$}]{\leall\ x\ (y\cons l') \text{ d\'a } x \le y}{\HdRel\ \lerel\ x\ (y\cons l')}
+\end{mathpar}
+Em Rocq: \texttt{apply Sorted\_cons. exact Hs. destruct l as [| y l'].
+apply HdRel\_nil. apply HdRel\_cons. apply Hall. simpl. left. reflexivity}.
+
+\section{O teorema \texttt{selectionsort\_correct}}
+
+A prova procede por indu\c{c}\~ao funcional sobre $\ssort$, o que gera tr\^es casos
+correspondentes aos ramos da defini\c{c}\~ao de $\ssort$. Em cada case, prova-se separadamente
+o ramo da ordena\c{c}\~ao (que $\Sorted\ \lerel\ (\ssort\ l)$ vale) e o ramo da permuta\c{c}\~ao
+(que $\Perm\ l\ (\ssort\ l)$ vale).
+
+\subsection{Caso 1: $l = \nil$}
+
+Pela defini\c{c}\~ao, $\ssort\ \nil = \nil$.
+
+\subsubsection*{Ramo da ordena\c{c}\~ao}
+Objetivo: $\Sorted\ \lerel\ \nil$.
+
+\begin{mathpar}
+\inferrule*[Right={$(Sorted\_nil)$}]{~}{\Sorted\ \lerel\ \nil}
+\end{mathpar}
+
+\subsubsection*{Ramo da permuta\c{c}\~ao}
+Objetivo: $\Perm\ \nil\ \nil$.
+
+\begin{mathpar}
+\inferrule*[Right={$(perm\_nil)$}]{~}{\Perm\ \nil\ \nil}
+\end{mathpar}
+
+\subsection{Caso 2: $\selmin\ l = \mathsf{None}$}
+
+Pela defini\c{c}\~ao, $\ssort\ l = \nil$. O lema \texttt{select\_min\_None\_nil} garante:
+\begin{mathpar}
+\inferrule*[Right={$(\texttt{select\_min\_None\_nil})$}]{\selmin\ l = \mathsf{None}}{l = \nil}
+\end{mathpar}
+
+\subsubsection*{Ramo da ordena\c{c}\~ao}
+Objetivo: $\Sorted\ \lerel\ (ss\ l) = \Sorted\ \lerel\ \nil$ (pois $ss\ l = \nil$ neste case).
+
+Aplicamos $select\_min\_None\_nil$:
+\begin{mathpar}
+\inferrule*[Right={$(\texttt{select\_min\_None\_nil})$}]{\selmin\ l = \mathsf{None}}{l = \nil}
+\end{mathpar}
+
+O objetivo $\Sorted\ \lerel\ \nil$ \'e provado por:
+\begin{mathpar}
+\inferrule*[Right={$(Sorted\_nil)$}]{~}{\Sorted\ \lerel\ \nil}
+\end{mathpar}
+
+\subsubsection*{Ramo da permuta\c{c}\~ao}
+Objetivo: $\Perm\ l\ (ss\ l) = \Perm\ l\ \nil$ (pois $ss\ l = \nil$ neste case).
+
+Aplicamos $select\_min\_None\_nil$:
+\begin{mathpar}
+\inferrule*[Right={$(\texttt{select\_min\_None\_nil})$}]{\selmin\ l = \mathsf{None}}{l = \nil}
+\end{mathpar}
+
+Substituindo $l = \nil$ no objetivo $\Perm\ l\ \nil$, ele vira $\Perm\ \nil\ \nil$:
+\begin{mathpar}
+\inferrule*[Right={$(perm\_nil)$}]{~}{\Perm\ \nil\ \nil}
+\end{mathpar}
+
+\subsection{Caso 3: $\selmin\ l = \mathsf{Some}\ m$}
+
+Pela defini\c{c}\~ao, $\ssort\ l = m \cons \ssort\ (\removeone\ m\ l)$.
+
+A hip\'otese de indu\c{c}\~ao afirma que $\ssort\ (\removeone\ m\ l)$ est\'a ordenada e \'e permuta\c{c}\~ao
+de $\removeone\ m\ l$.
+
+\subsubsection*{Ramo da ordena\c{c}\~ao}
+Objetivo: $\Sorted\ \lerel\ (m \cons \ssort\ (\removeone\ m\ l))$.
+Pela ponte \texttt{le\_all\_cons\_sorted}, basta provar que $m$ \'e piso de
+$\ssort\ (\removeone\ m\ l)$ e que essa lista est\'a ordenada (esta \'ultima \'e a
+H.I.).
+
+\begin{afirmacao}
+$m$ \'e piso de $\ssort\ (\removeone\ m\ l)$, i.e., $\leall\ m\ (\ssort\ (\removeone\ m\ l))$.
+\end{afirmacao}
+\begin{demo}
+Por defini\c{c}\~ao de $\leall$, queremos provar:
+\[
+  \forall z \in \ssort\ (\removeone\ m\ l), \quad m \le z.
+\]
+Seja $z \in \ssort\ (\removeone\ m\ l)$ arbitr\'ario.
+
+\paragraph*{Passo 1 (Permuta\c{c}\~ao --- H.I.):}
+A H.I.\ afirma $\Perm\ (\removeone\ m\ l)\ (\ssort\ (\removeone\ m\ l))$. Por preserva\c{c}\~ao de
+elementos sob permuta\c{c}\~ao:
+\[
+  z \in \ssort\ (\removeone\ m\ l) \Rightarrow z \in \removeone\ m\ l.
+\]
+
+\paragraph*{Passo 2 (\texttt{remove\_one\_in\_orig}):}
+Pelo lema \texttt{remove\_one\_in\_orig}:
+\[
+  z \in \removeone\ m\ l \Rightarrow z \in l.
+\]
+
+\paragraph*{Passo 3 (\texttt{select\_min\_correct}):}
+Temos $\selmin\ l = \mathsf{Some}\ m$ (dado do case). Pelo lema \texttt{select\_min\_correct}:
+\[
+  \selmin\ l = \mathsf{Some}\ m \Rightarrow \leall\ m\ l.
+\]
+Logo, para todo $w \in l$, vale $m \le w$.
+
+\paragraph*{Passo 4 (Instancia\c{c}\~ao):}
+Como $z \in l$ (do Passo 2), aplicando $\leall\ m\ l$ a $z$:
+\[
+  m \le z.
+\]
+
+\paragraph*{Conclus\~ao:}
+Como $z$ era arbitr\'ario em $\ssort\ (\removeone\ m\ l)$, conclu\'imos:
+\[
+  \forall z \in \ssort\ (\removeone\ m\ l), \quad m \le z \quad \equiv \quad \leall\ m\ (\ssort\ (\removeone\ m\ l)).
+\]
+\end{demo}
+
+\noindent Com essa afirma\c{c}\~ao e a H.I., a \'arvore do ramo \'e
+\begin{mathpar}
+\inferrule*[Right={$(\texttt{le\_all\_cons\_sorted})$}]
+  {
+    \underbrace{\leall\ m\ (\ssort\ (\removeone\ m\ l))}_{m\text{ \'e piso}}
+    \and\and
+    \underbrace{\Sorted\ \lerel\ (\ssort\ (\removeone\ m\ l))}_{\mathrm{H.I.}}
+  }
+  {\Sorted\ \lerel\ (m \cons \ssort\ (\removeone\ m\ l))}
+\end{mathpar}
+
+\subsubsection*{Ramo da permuta\c{c}\~ao}
+Objetivo: $\Perm\ l\ (m \cons \ssort\ (\removeone\ m\ l))$.
+
+Encadeia-se, por transitividade, a permuta\c{c}\~ao
+$\Perm\ l\ (m \cons \removeone\ m\ l)$ (lema \texttt{remove\_one\_perm}) com a H.I.\ aplicada sob
+$perm\_skip$. Para que a \'arvore caiba na p\'agina, abreviamos $r = \removeone\ m\ l$,
+mantendo a estrutura l\'ogica intacta:
+\begin{tiny}
+\begin{mathpar}
+\inferrule*[Right={$(perm\_trans)$}]
+  {
+    \inferrule*[Right={$(\texttt{remove\_one\_perm})$}]
+      {
+        \inferrule*[Right={$(\texttt{select\_min\_in})$}]
+          {\selmin\ l = \mathsf{Some}\ m}
+          {m \in l}
+      }
+      {\Perm\ l\ (m \cons r)}
+    \and\and
+    \inferrule*[Right={$(perm\_skip)$}]{\mathrm{H.I.}}{\Perm\ (m \cons r)\ (m \cons \ssort\ r)}
+  }
+  {\Perm\ l\ (m \cons \ssort\ r)}
+\end{mathpar}
+\end{tiny}
+
+\paragraph{Reuni\~ao.}
+A \'arvore final \'e uma \'unica introdu\c{c}\~ao da conjun\c{c}\~ao dos dois
+ramos:
+\begin{mathpar}
+\inferrule*[Right={$(\land\text{-}intro)$}]
+  {
+    \inferrule*[Right={(ramo da ordena\c{c}\~ao)}]{~}{\Sorted\ \lerel\ (\ssort\ l)}
+    \and\and
+    \inferrule*[Right={(ramo da permuta\c{c}\~ao)}]{~}{\Perm\ l\ (\ssort\ l)}
+  }
+  {\Sorted\ \lerel\ (\ssort\ l)\ \land\ \Perm\ l\ (\ssort\ l)}
+\end{mathpar}
+
+Como teste de sanidade do algoritmo corrigido, verifica-se que
+$\ssort\ (2\cons 1\cons\nil) = 1\cons 2\cons\nil$ e
+$\ssort\ (4\cons 2\cons 1\cons 3\cons\nil) = 1\cons 2\cons 3\cons 4\cons\nil$, em
+contraste com o comportamento incorreto do algoritmo original discutido na
+Se\c{c}\~ao~\ref{sec:correcao}.
+
+\bigskip
+\noindent\textbf{Reposit\'orio:} \url{https://github.com/artdelpi/selection_sort_lc1.git}
+
+\noindent\textbf{V\'ideo:} \url{https://youtu.be/ANGPjunMR3o}
 
 \end{document}

@@ -174,7 +174,7 @@ Proof.
       * apply perm_skip. exact Hperm.
 Qed.
 
-(** Repositório: %\url{https://github.com/flaviodemoura/selection_sort}% *)
+(** Repositório: %\url{https://github.com/artdelpi/selection_sort_paa.git}% *)
    
  
   
